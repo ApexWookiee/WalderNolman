@@ -2,4 +2,12 @@
 title: "Graphs"
 format: html
 editor: visual
+editor_options: 
+  chunk_output_type: console
 ---
+```{r}
+library(readr)
+# sample for reading in data that we scraped. 
+shoreview_rentals <- read_csv("Shoreview_rentals.csv")
+```
+
