@@ -8,5 +8,8 @@ editor: visual
 library(readr)
 # sample for reading in data that we scraped using Octoparse. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
+shoreview_buy <- read_csv("Shoreview_buy.csv")
+riverside_rentals <- read_csv("Riverside_rentals.csv")
+riverside_buy <- read_csv("Riverside_buy.csv")
 ```
 
