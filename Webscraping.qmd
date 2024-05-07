@@ -9,4 +9,3 @@ library(readr)
 # sample for reading in data that we scraped using Octoparse. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
 ```
-
