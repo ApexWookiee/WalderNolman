@@ -1,0 +1,62 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Load required packages
+#if (!requireNamespace("remotes", quietly = TRUE)) {
+#  install.packages("remotes")
+#}
+#remotes::install_github("r-tmap/tmap")
+library(tmap)
+library(tmaptools)
+library(leaflet)
+library(htmlwidgets)
+library(htmltools)
+library(dplyr)
+
+# Example data (replace with your own data)
+addresses <- data.frame(
+  address = c("200 Gage Rd, Riverside, IL",
+              "1 Infinite Loop, Cupertino, CA",
+              "1600 Pennsylvania Ave NW, Washington, DC")
+)
+
+# Geocode addresses using OSM
+geocodes <- geocode_OSM(as.character(addresses$address))
+
+# Combine geocoded data with original data
+addresses <- cbind(addresses, geocodes)
+
+# Create a leaflet map
+map <- leaflet(data = addresses) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    lng = ~lon,
+    lat = ~lat,
+    color = "red",
+    radius = 5,
+    popup = ~address
+  )
+
+# Add a title using htmlwidgets
+title_html <- HTML("<h3>Map of Addresses</h3>")
+map <- htmltools::tagAppendChild(map, title_html)
+
+# Display the map
+map
+
+```
+
+```{r}
+shoreview_rentals <- read_csv("Shoreview_rentals.csv")
+shoreview_addresses <- shoreview_rentals |>
+  select(address)
+
+geocodes <- geocode_OSM(as.character(shoreview_addresses$address))
+
+addresses <- cbind(shoreview_addresses, geocodes)
+```
+

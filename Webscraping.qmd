@@ -131,4 +131,3 @@ ggplot(test_sf) +
     axis.text.y = element_blank()    # Remove y-axis text
   )
 ```
-
