@@ -11,6 +11,7 @@ library(readr)
 library(tidyverse)
 library(stringr)
 library(dplyr)
+library(ggmap)
 library(tmap)
 # sample for reading in data that we scraped using Octoparse. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
@@ -115,7 +116,6 @@ tm_layout(
 ```
 
 ```{r}
-library(ggmap)
 library(sf)
 library(ggspatial)
 library(prettymapr)
