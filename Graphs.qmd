@@ -5,9 +5,50 @@ editor: visual
 editor_options: 
   chunk_output_type: console
 ---
+
 ```{r}
 library(readr)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(gridExtra)
 # sample for reading in data that we scraped. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
+```
+
+```{r}
+shr_rnt <- shoreview_rentals |>
+  mutate(price = parse_number(price)) |>
+  ggplot(aes(x = square_feet, y = price, size = bedroom_s_, alpha = 0.1)) +
+  geom_point(color = 'green') +
+  theme(legend.position = "none") +
+  ggtitle("Riverside Homes for Rent")
+shr_rnt
+
+shr_buy <- shoreview_buy |>
+  mutate(price = parse_number(price)) |>
+  ggplot(aes(x = square_feet, y = price, size = bedroom_s_, alpha = 0.1)) +
+  geom_point(color = 'blue') +
+  theme(legend.position = "none") +
+  ggtitle("Shoreview Homes for Sale")
+shr_buy
+
+riv_rnt <- riverside_rentals |>
+  mutate(price = parse_number(price)) |>
+  ggplot(aes(x = square_feet, y = price, size = bedroom_s_, alpha = 0.1)) +
+  geom_point(color = 'orange') +
+  theme(legend.position = "none") +
+  ggtitle("Riverside Homes for Rent")
+riv_rnt
+
+riv_buy <- riverside_buy |>
+  mutate(price = parse_number(price)) |>
+  ggplot(aes(x = square_feet, y = price, size = bedroom_s_, alpha = 0.1)) +
+  geom_point(color = 'red') +
+  theme(legend.position = "none") +
+  ggtitle("Riverside Homes for Sale")
+riv_buy
+
+grid.arrange(shr_rnt, shr_buy, riv_rnt, riv_buy)
 ```
 
