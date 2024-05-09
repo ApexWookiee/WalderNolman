@@ -14,6 +14,8 @@ library(dplyr)
 library(tmap)
 library(ggmap)
 library(sf)
+library(ggspatial)
+library(ggrepel)
 # sample for reading in data that we scraped using Octoparse. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
 shoreview_buy <- read_csv("Shoreview_buy.csv")
@@ -35,7 +37,8 @@ shoreview_buy <- shoreview_buy %>%
   mutate(status = "buy",
          price = parse_number(price),
          price = price / 1000) %>%
-  select(price, bedrooms, bathrooms, square_feet, status, address, type)
+mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
 
 # clean the FUCK outta shoreview_rentals
 shoreview_rentals <- shoreview_rentals %>%
@@ -51,15 +54,19 @@ shoreview_rentals <- shoreview_rentals %>%
   )) %>%
   mutate(status = "rental",
          price = parse_number(price)) %>%
-  select(price, bedrooms, bathrooms, square_feet, status, address, type)
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
 
 # clean the FUCK outta riverside_buy 
 riverside_buy <- riverside_buy %>%
   rename("bedrooms" = "bedroom_s_",
          "bathrooms" = "bathroom_s_",
          ) %>%
-  mutate(price = parse_number(price)) %>%
-  select(price, bedrooms, bathrooms, square_feet, status, address)
+  mutate(price = parse_number(price),
+         type = "House") %>%
+  mutate(status = "buy") %>%
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
 
 # clean the FUCK outta riverside_rentals 
 riverside_rentals <- riverside_rentals %>%
@@ -69,82 +76,18 @@ riverside_rentals <- riverside_rentals %>%
   mutate(price = parse_number(price)) %>%
   mutate(type = "Apartment",
          status = "rental") %>%
-  select(price, bedrooms, bathrooms, square_feet, status, address, type)
-
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
+  
 shoreview_full <- rbind(shoreview_buy, shoreview_rentals)
+riverside_full <- rbind(riverside_buy, riverside_rentals)
 ```
+# Function to plot map data. 
 
 ```{r}
-shoreview_small <- shoreview_full %>%
-  drop_na()
-
-addresses <- shoreview_full %>%
-  drop_na() %>%
-  select(address)
-
-register_google(key = "AIzaSyA-CZDgJkk_zG_ULCoS-PosYIQF_ZzwQPs")
-
-coords <- geocode(addresses$address)
-
-shoreview_coords <- bind_cols(shoreview_small, coords)
-
-shoreview_sf <- st_read("Shapefiles/shoreviewShape.gpkg")
-
-test_sf <- st_as_sf(shoreview_coords, coords = c("lon", "lat"), crs = 4326)
-test_sf <- st_transform(test_sf, 3857)  
-
-# COLOR SHOWS PRICE 
-tm_shape(shoreview_sf) + # plots Shoreview border
-  tm_borders(col = "black", lwd = 1.5) +
-tm_shape(test_sf) +
-  tm_dots(col = "price", size = 0.75, palette = "-viridis", title = "Price in Thousands") +
-tm_layout(
-  legend.text.fontface = 3, 
-  legend.frame = FALSE,
-  legend.outside = TRUE,
-  legend.outside.size = 0.6,
-  legend.outside.position = "left",
-  frame = FALSE 
-)
-
-# SIZE SHOWS PRICE
-tm_shape(shoreview_sf) + 
-  tm_borders(col = "black", lwd = 1.5) +  # plots Shoreview border
-tm_shape(test_sf) +
-  tm_dots(size = "price", title.siz = "Price in Thousands - Buy", col = "skyblue") +  # Change legend title
-tm_layout(
-  frame = FALSE,
-  legend.width = 3,
-  legend.position = c(-1,0.25)
-)
-```
-
-# testing better mapping function with geom_sf. 
-
-```{r}
-library(ggspatial)
-
-test_sf %>%
-  filter(status == "rental") %>%
-  ggplot() +
-  annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
-  geom_sf(aes(size = price), alpha = 0.7) +
-  labs(
-    size = "Price in Thousands"
-  ) +
-   theme(
-    axis.text.x = element_blank(),   # Remove x-axis text
-    axis.text.y = element_blank()    # Remove y-axis text
-  )
-```
-
-# Function to plot Shoreview data. 
-
-```{r}
-plot_this_shoreview <- function(data, rentBuy, size_variable, color_variable){
+plot_map<- function(data, rentBuy, size_variable, color_variable, label_size){
   data_small <- data %>%
-    drop_na(c(.data[[size_variable,]], .data[[color_variable]])) 
-  # issues with NA if variable selected for color or size are missing. 
+    drop_na(c(.data[[size_variable]], .data[[color_variable]])) 
 
   addresses <- data %>%
     drop_na() %>%
@@ -154,32 +97,34 @@ plot_this_shoreview <- function(data, rentBuy, size_variable, color_variable){
 
   coords <- geocode(addresses$address)
 
-  data_coords <- bind_cols(data_small, coords)
-
-  data_coords <- bind_cols(data_small, coords) %>%
+  data_coords <- cbind(data_small, coords) %>%
     st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
     st_transform(3857) %>%
-    filter(status == rentBuy & !is.na(.[[size_variable]]) & !is.na(.[[color_variable]])) # special filtering required, drop_na() is not enough on its own. 
+    filter(status == rentBuy) 
 
-  map <- data_coords %>%
-    filter(status == rentBuy) %>%
-    ggplot() +
+  map <- ggplot(data_coords) +
     annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
-    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) + # .data refers to the current data set in the pipeline
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+    geom_label_repel(
+      aes(label = address_short, x = st_coordinates(geometry)[,1], y = st_coordinates(geometry)[,2]),
+      size = label_size, box.padding = 0.25, point.padding = 0.3, max.overlaps = Inf
+    ) +
     labs(
       size = size_variable,
       color = color_variable,
-      title = paste("Shoreview, Mn - ", rentBuy) # dynamically label title
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y ="",
     ) +
     theme(
-      axis.text.x = element_blank(),   # removes long and lat from axes
+      axis.text.x = element_blank(),   
       axis.text.y = element_blank()    
     )
   return(map)
 }
+
+plot_map(shoreview_full, rentBuy = "rental", size_variable = "square_feet", color_variable = "bedrooms", label_size = 1.5) 
+plot_map(riverside_full, rentBuy = "rental", size_variable = "square_feet", color_variable = "bedrooms", label_size = 2.0) 
 ```
 
-```{r}
-plot_this_shoreview(shoreview_full, "buy", "bathrooms", "bedrooms")
-```
 
