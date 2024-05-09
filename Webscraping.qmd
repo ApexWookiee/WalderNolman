@@ -49,7 +49,8 @@ shoreview_rentals <- shoreview_rentals %>%
     is.na(type) ~ "Apartment",
     TRUE ~ type
   )) %>%
-  mutate(status = "rental") %>%
+  mutate(status = "rental",
+         price = parse_number(price)) %>%
   select(price, bedrooms, bathrooms, square_feet, status, address, type)
 
 # clean the FUCK outta riverside_buy 
@@ -69,13 +70,15 @@ riverside_rentals <- riverside_rentals %>%
   mutate(type = "Apartment",
          status = "rental") %>%
   select(price, bedrooms, bathrooms, square_feet, status, address, type)
+
+shoreview_full <- rbind(shoreview_buy, shoreview_rentals)
 ```
 
 ```{r}
-shoreview_small <- shoreview_buy %>%
+shoreview_small <- shoreview_full %>%
   drop_na()
 
-addresses <- shoreview_buy %>%
+addresses <- shoreview_full %>%
   drop_na() %>%
   select(address)
 
@@ -116,11 +119,14 @@ tm_layout(
 )
 ```
 
+# testing better mapping function with geom_sf. 
+
 ```{r}
 library(ggspatial)
-library(prettymapr)
 
-ggplot(test_sf) +
+test_sf %>%
+  filter(status == "rental") %>%
+  ggplot() +
   annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
   geom_sf(aes(size = price), alpha = 0.7) +
   labs(
@@ -131,3 +137,49 @@ ggplot(test_sf) +
     axis.text.y = element_blank()    # Remove y-axis text
   )
 ```
+
+# Function to plot Shoreview data. 
+
+```{r}
+plot_this_shoreview <- function(data, rentBuy, size_variable, color_variable){
+  data_small <- data %>%
+    drop_na(c(.data[[size_variable,]], .data[[color_variable]])) 
+  # issues with NA if variable selected for color or size are missing. 
+
+  addresses <- data %>%
+    drop_na() %>%
+    select(address)
+
+  register_google(key = "AIzaSyA-CZDgJkk_zG_ULCoS-PosYIQF_ZzwQPs")
+
+  coords <- geocode(addresses$address)
+
+  data_coords <- bind_cols(data_small, coords)
+
+  data_coords <- bind_cols(data_small, coords) %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+    st_transform(3857) %>%
+    filter(status == rentBuy & !is.na(.[[size_variable]]) & !is.na(.[[color_variable]])) # special filtering required, drop_na() is not enough on its own. 
+
+  map <- data_coords %>%
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) + # .data refers to the current data set in the pipline
+    labs(
+      size = size_variable,
+      color = color_variable,
+      title = paste("Shoreview, Mn - ", rentBuy)
+    ) +
+    theme(
+      axis.text.x = element_blank(),   # removes long and lat from axes
+      axis.text.y = element_blank()    
+    )
+  return(map)
+}
+```
+
+```{r}
+plot_this_shoreview(shoreview_full, "buy", "bathrooms", "bedrooms")
+```
+
