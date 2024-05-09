@@ -165,11 +165,11 @@ plot_this_shoreview <- function(data, rentBuy, size_variable, color_variable){
     filter(status == rentBuy) %>%
     ggplot() +
     annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
-    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) + # .data refers to the current data set in the pipline
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) + # .data refers to the current data set in the pipeline
     labs(
       size = size_variable,
       color = color_variable,
-      title = paste("Shoreview, Mn - ", rentBuy)
+      title = paste("Shoreview, Mn - ", rentBuy) # dynamically label title
     ) +
     theme(
       axis.text.x = element_blank(),   # removes long and lat from axes
