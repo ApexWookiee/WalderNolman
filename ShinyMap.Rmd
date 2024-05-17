@@ -1,12 +1,11 @@
 ---
-title: "Webscraping"
-format: html
-editor: source
-editor_options: 
-  chunk_output_type: console
+title: "ShinyMap"
+output: html_document
+date: "2024-05-14"
+runtime: shiny
 ---
 
-```{r}
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 library(readr)
 library(tidyverse)
 library(stringr)
@@ -16,6 +15,7 @@ library(ggmap)
 library(sf)
 library(ggspatial)
 library(ggrepel)
+library(shiny)
 # sample for reading in data that we scraped using Octoparse. 
 shoreview_rentals <- read_csv("Shoreview_rentals.csv")
 shoreview_buy <- read_csv("Shoreview_buy.csv")
@@ -25,7 +25,7 @@ riverside_buy <- read_csv("Riverside_buy.csv")
 
 # Data Cleaning and merging
 
-```{r}
+```{r,echo = FALSE, message = FALSE, warning = FALSE}
 # clean the FUCK outta shoreview_buy
 shoreview_buy <- shoreview_buy %>%
   rename("bedrooms" = "bedroom_s_",
@@ -87,7 +87,7 @@ riverside_full <- rbind(riverside_buy, riverside_rentals)
 
 # code to implement long and lat into full data sets. 
 
-```{r}
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
 # code to access long and lat via google API
 register_google(key = "AIzaSyA-CZDgJkk_zG_ULCoS-PosYIQF_ZzwQPs")
 
@@ -115,13 +115,14 @@ addresses_riverside <- riverside_full  %>%
 
 # Function to plot map data. 
 
-```{r}
-plot_map<- function(data, rentBuy, size_variable, color_variable, label_size){
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+plot_map<- function(data, rentBuy, size_variable, color_variable, label_size, show_labels){
   data_small <- data %>%
     drop_na(c(.data[[size_variable]], .data[[color_variable]])) 
   
-  map <- data %>%
-    filter(status == rentBuy)
+  if(show_labels){
+    map <- data %>% 
+    filter(status == rentBuy) %>%
     ggplot() +
     annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
     geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
@@ -142,17 +143,61 @@ plot_map<- function(data, rentBuy, size_variable, color_variable, label_size){
       axis.ticks.x = element_blank(),
       axis.ticks.y = element_blank(), 
     )
+  }
+  
+  if(show_labels == FALSE){
+  map <- data %>% 
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+    labs(
+      size = size_variable,
+      color = color_variable,
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y ="",
+    ) +
+    theme(
+      axis.text.x = element_blank(),   
+      axis.text.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank(), 
+    )
+  }
   return(map)
 }
 ```
 
 
-# Test the function. 
 
-```{r}
-plot_map(data_coords_shoreview, rentBuy = "rental", size_variable = "price", color_variable = "type", label_size = 1.5) 
+```{r, echo = FALSE}
+library(shiny)
 
-plot_map(riverside_full, rentBuy = "rental", size_variable = "square_feet", color_variable = "bedrooms", label_size = 2.0) 
+ui <- fluidPage(
+  titlePanel("Adjustable Plot Example"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("color", label = "Color Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms", "type")),
+      selectInput("size", label = "Size Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms")),
+      selectInput("RentBuy", label = "Rental / For Sale", choices = c("buy", "rental")),
+      sliderInput("Label_size", label = "Label Size", min = 1.0, max = 5.0, value = 1.5, step = 0.5),
+      checkboxInput("show_labels", label = "Show Labels", value = TRUE)
+    ),
+    mainPanel(
+      plotOutput("plotID", width = "100%", height = "600px")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  output$plotID <- renderPlot({
+    plot_map(data_coords_shoreview, rentBuy = input$RentBuy, size_variable = input$size, color_variable = input$color, label_size = input$Label_size, show_labels = input$show_labels)
+  })
+}
+
+shinyApp(ui = ui, server = server)
 ```
 
 
