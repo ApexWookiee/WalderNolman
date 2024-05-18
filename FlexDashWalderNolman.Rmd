@@ -1,0 +1,385 @@
+---
+title: "Zillow Webscraping"
+output: flexdashboard::flex_dashboard
+runtime: shiny
+---
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+library(readr)
+library(knitr)
+library(tidyverse)
+library(stringr)
+library(dplyr)
+library(tmap)
+library(ggmap)
+library(sf)
+library(ggspatial)
+library(ggrepel)
+library(shiny)
+library(scales)
+# sample for reading in data that we scraped using Octoparse. 
+shoreview_rentals <- read_csv("Shoreview_rentals.csv")
+shoreview_buy <- read_csv("Shoreview_buy.csv")
+riverside_rentals <- read_csv("Riverside_rentals.csv")
+riverside_buy <- read_csv("Riverside_buy.csv")
+```
+
+```{r,echo = FALSE, message = FALSE, warning = FALSE}
+# clean the FUCK outta shoreview_buy
+shoreview_buy <- shoreview_buy %>%
+  rename("bedrooms" = "bedroom_s_",
+         "bathrooms" = "bathroom_s_",
+         ) %>%
+  mutate(type = case_when(
+    str_detect(status, "[Tt]ownhouse") ~ "Townhouse",
+    str_detect(status, "[Hh]ouse") ~ "House",
+    str_detect(status, "[Cc]ondo") ~ "Condo",
+    str_detect(status, "\\b([Ll]and|[Ll]ot|[Nn]ew)|[Cc]oming\\b") ~ "Misc")) %>%
+  mutate(status = "buy",
+         price = parse_number(price)) %>%
+mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
+
+# clean the FUCK outta shoreview_rentals
+shoreview_rentals <- shoreview_rentals %>%
+  rename("bedrooms" = "bedroom_s_",
+         "bathrooms" = "bathroom_s_",
+         ) %>%
+  mutate(type = case_when(
+    str_detect(status, "[Tt]ownhouse") ~ "Townhouse rental",
+    str_detect(status, "[Hh]ouse") ~ "House rental"))  %>%
+  mutate(type = case_when(
+    is.na(type) ~ "Apartment",
+    TRUE ~ type
+  )) %>%
+  mutate(status = "rental",
+         price = parse_number(price)) %>%
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
+
+# clean the FUCK outta riverside_buy 
+riverside_buy <- riverside_buy %>%
+  rename("bedrooms" = "bedroom_s_",
+         "bathrooms" = "bathroom_s_",
+         ) %>%
+  mutate(price = parse_number(price),
+         type = "House") %>%
+  mutate(status = "buy") %>%
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
+
+# clean the FUCK outta riverside_rentals 
+riverside_rentals <- riverside_rentals %>%
+  rename("bedrooms" = "bedroom_s_",
+         "bathrooms" = "bathroom_s_",
+         ) %>%
+  mutate(price = parse_number(price)) %>%
+  mutate(type = "Apartment",
+         status = "rental") %>%
+  mutate(address_short = str_extract(address, "^([^,]*)")) %>%
+  select(price, bedrooms, bathrooms, square_feet, status, address, type, address_short)
+  
+shoreview_full <- rbind(shoreview_buy, shoreview_rentals)
+riverside_full <- rbind(riverside_buy, riverside_rentals)
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# code to access long and lat via google API
+register_google(key = "AIzaSyA-CZDgJkk_zG_ULCoS-PosYIQF_ZzwQPs")
+
+# get data prepped for shoreview including lat and long
+addresses_shoreview <- shoreview_full  %>%
+    select(address)
+
+  coords <- geocode(addresses_shoreview$address)
+
+  data_coords_shoreview <- cbind(shoreview_full, coords) %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+    st_transform(3857)
+  
+# get data prepped for riverside including lat and long 
+addresses_riverside <- riverside_full  %>%
+    select(address)
+
+  coords <- geocode(addresses_riverside$address)
+
+  data_coords_riverside <- cbind(riverside_full, coords) %>%
+    st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
+    st_transform(3857)  
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+plot_map<- function(data, rentBuy, size_variable, color_variable, label_size, show_labels){
+  data_small <- data %>%
+    drop_na(c(.data[[size_variable]], .data[[color_variable]])) 
+  
+  # generate map if show_labels box is checked
+  if(show_labels == TRUE && is.numeric(color_variable) == TRUE){
+    map <- data %>%
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+      geom_label_repel(
+      aes(label = address_short, x = st_coordinates(geometry)[,1], y = st_coordinates(geometry)[,2]), # gets coordinates from an otherwise intricate column. 
+      size = label_size, box.padding = 0.25, point.padding = 0.3, max.overlaps = Inf
+    ) +
+    scale_size_continuous(labels = comma) +  # give size legend neat appearance
+    scale_color_continuous(labels = comma) + # give color legend neat appearance
+    labs(
+      size = str_to_title(str_replace_all(size_variable, "_", " ")),
+      color = str_to_title(str_replace_all(color_variable, "_", " ")),
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y =""
+    ) +
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  }
+  
+  # generate map if show labels box is not checked 
+  if(show_labels == FALSE && is.numeric(color_variable) == FALSE){
+map <- data %>%
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+    scale_size_continuous(labels = comma) +  # Formatting size legend to use commas
+    labs(
+      size = str_to_title(str_replace_all(size_variable, "_", " ")),
+      color = str_to_title(str_replace_all(color_variable, "_", " ")),
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y =""
+    ) +
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  }
+  
+  
+  if(show_labels == TRUE && is.numeric(color_variable) == FALSE){
+map <- data %>%
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+  geom_label_repel(
+      aes(label = address_short, x = st_coordinates(geometry)[,1], y = st_coordinates(geometry)[,2]), # gets coordinates from an otherwise intricate column. 
+      size = label_size, box.padding = 0.25, point.padding = 0.3, max.overlaps = Inf
+    ) +
+    scale_size_continuous(labels = comma) +  # Formatting size legend to use commas
+    labs(
+      size = str_to_title(str_replace_all(size_variable, "_", " ")),
+      color = str_to_title(str_replace_all(color_variable, "_", " ")),
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y =""
+    ) +
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  }
+  
+    if(show_labels == FALSE && is.numeric(color_variable) == TRUE){
+map <- data %>%
+    filter(status == rentBuy) %>%
+    ggplot() +
+    annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
+    geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
+    scale_size_continuous(labels = comma) +
+    scale_color_continuous(labels = comma) + # Formatting size legend to use commas
+    labs(
+      size = str_to_title(str_replace_all(size_variable, "_", " ")),
+      color = str_to_title(str_replace_all(color_variable, "_", " ")),
+      title = paste("Housing - ", rentBuy),
+      x = "",
+      y =""
+    ) +
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_blank()
+    )
+  }
+  
+  return(map)
+}
+```
+
+About
+==========================
+
+Column {data-width = 400}
+-------------------------
+
+```{r}
+h4("In this project we scraped data from Zillow search results, and used it to graph the values on both maps and charts.
+
+For the towns, we chose each of our hometowns (Walter is from Shoreview, Minnesota, and Nolan is from Riverside, Illinois).
+
+You can customize certain specifications about the maps of each town, including whether the property is a rental or available for purchase, and which other values to display and where (price, square footage, type of housing, bedroom count, and bathroom count).
+
+To scrape the data, we used the application Octoparse. This app allows users to paste URLs of Zillow searches, and the app scrapes those resulting properties for data. We then cleaned the data to be used in our RMD.
+
+We used the Google Maps API to map the addresses of the chosen properties. This involved creating geocodes for each address (obtaining the longitude and latitude), and then plotting these coordinates.", style = "font-size:27px")
+```
+
+Column {data-width = 200}
+-------------------------
+
+```{r  fig.width = 4, fig.height = 2, fig.align= 'center'}
+include_graphics("Images/Octoparse_logo.png")
+include_graphics("Images/Zillow_logo.png")
+```
+
+Riverside, IL
+==========================
+
+Column {data-width = 200}
+-------------------------
+
+```{r}
+inputPanel(selectInput("color", label = "Color Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms", "type")),
+      selectInput("size", label = "Size Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms")),
+      selectInput("rentBuy", label = "Rental / For Sale", choices = c("buy", "rental")),
+      sliderInput("label_size", label = "Label Size", min = 1.0, max = 5.0, value = 1.5, step = 0.5),
+      checkboxInput("show_labels", label = "Show Labels", value = TRUE)
+    )
+```
+
+Column 
+-------------------------
+
+### Map of Riverside, IL
+
+```{r echo = FALSE}
+renderPlot({
+    plot_map(data_coords_riverside, rentBuy = input$rentBuy, size_variable = input$size, color_variable = input$color, label_size = input$label_size, show_labels = input$show_labels)
+  })
+```
+
+Shoreview, MN
+==========================
+
+Column {data-width = 200}
+-------------------------
+
+```{r, echo=FALSE}
+inputPanel(selectInput("Color", label = "Color Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms", "type")),
+      selectInput("Size", label = "Size Variable", choices = c("price", "square_feet", "bedrooms", "bathrooms")),
+      selectInput("RentBuy", label = "Rental / For Sale", choices = c("buy", "rental")),
+      sliderInput("Label_size", label = "Label Size", min = 1.0, max = 5.0, value = 1.5, step = 0.5),
+      checkboxInput("Show_labels", label = "Show Labels", value = TRUE)
+    )
+```
+
+Column 
+-------------------------
+
+### Map of Shoreview, MN
+
+```{r echo = FALSE}
+renderPlot({
+    plot_map(data_coords_shoreview, rentBuy = input$RentBuy, size_variable = input$Size, color_variable = input$Color, label_size = input$Label_size, show_labels = input$Show_labels)
+  })
+```
+
+Quantitative Data 
+==========================
+
+Inputs {.sidebar}
+-------------------------
+### Choose Inputs
+
+```{r}
+#input panel
+inputPanel(
+  selectInput("quant", label = "Choose Riverside Variable", choices = c("square_feet", "price")),
+  selectInput("n_breaks2", label = "Number of bins:",
+              choices = c(5, 10, 15, 20, 25, 30), selected = 15),
+  
+  sliderInput("bw_adjust2", label = "Bandwidth adjustment:",
+              min = 0.1, max = 3, value = 1.2, step = 0.1),
+  selectInput("riverside_filter", label = "Filter Riverside By:", choices = c("buy", "rental")),
+  selectInput("Quant", label = "Choose Shoreview Variable", choices = c("square_feet", "price")),
+  selectInput("N_breaks2", label = "Number of bins:",
+              choices = c(5, 10, 15, 20, 25, 30), selected = 15),
+  
+  sliderInput("Bw_adjust2", label = "Bandwidth adjustment:",
+              min = 0.1, max = 3, value = 1.2, step = 0.1),
+  selectInput("shoreview_filter", label = "Filter Shoreview By", choices = c("buy", "rental")),
+)
+```
+
+Column 
+-------------------------
+### Histogram of Riverside 
+
+```{r}
+#render plot
+renderPlot({
+  data_coords_riverside %>%
+    filter(status == input$riverside_filter) %>%
+  ggplot(aes(x = .data[[input$quant]])) +
+    geom_histogram(aes(y = ..density..), 
+                   bins = as.numeric(input$n_breaks2),
+                   fill = "lightblue", colour = "white") +
+    geom_density(adjust = input$bw_adjust2, colour = "blue") +
+    labs(x = str_to_title(str_replace_all(input$quant, "_", " "))
+    )
+})
+```
+
+Column 
+-------------------------
+### Histogram of Shoreview
+
+
+
+```{r}
+#render plot
+renderPlot({
+   data_coords_shoreview %>%
+    filter(status == input$shoreview_filter) %>%
+  ggplot(aes(x = .data[[input$Quant]])) +
+    geom_histogram(aes(y = ..density..), 
+                   bins = as.numeric(input$N_breaks2),
+                   fill = "lightblue", colour = "white") +
+    geom_density(adjust = input$Bw_adjust2, colour = "blue") +
+     labs(x = str_to_title(str_replace_all(input$Quant, "_", " "))
+    )
+})
+```
+
+Insights
+==========================
+
+Column {data-width = 400}
+-------------------------
+
+```{r}
+h4("For Riverside, Zillow data was quite sparse, as it is such a small suburb of Chicago and doesn't have many listings outside of incredibly expensive houses that are struggling to sell. Because of this, the Riverside maps ended up being less denseley populated. Despite this, there are more houses for sale in the western region, supporting the idea that expensive homes remain unsold in Riverside.", style = "font-size:27px")
+```
+
+```{r}
+h4("On the other hand, Shoreview is much larger, and has a wider variety of properties for sale/rent, which lead to denser maps and more intricate quantitative graphs. One thing we noticed about Shoreview is many of the houses for sale are in the northern region, with few houses available in the southern region. This could be explained by proximity to larger suburbs and the cities of St Paul and Minneapolis, both of which hold attractive businesses and opportunities. Another trend in Shoreview housing which Minnesota follows in general is the expensive lake house stereotype. These lake houses are much more expensive than the other houses in Shoreview despite them being in the same town.", style = "font-size:27px")
+```
+
+```{r}
+h4("If we were to grow the breadth of the project, we would want to expand the area of our Zillow searches to include the surrounding towns, thus more variable data. Additionally, implementing a package such as Leaflet to allow for interactable maps could make exploring those more complex maps more interesting.", style = "font-size:27px")
+```
+

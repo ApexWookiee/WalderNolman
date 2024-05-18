@@ -120,8 +120,8 @@ plot_map<- function(data, rentBuy, size_variable, color_variable, label_size){
   data_small <- data %>%
     drop_na(c(.data[[size_variable]], .data[[color_variable]])) 
   
-  map <- data %>%
-    filter(status == rentBuy)
+  map <- data %>% 
+    filter(status == rentBuy) %>%
     ggplot() +
     annotation_map_tile(type = "osm", zoomin = 0, progress = "none") +
     geom_sf(aes(size = .data[[size_variable]], color = .data[[color_variable]]), alpha = 0.7) +
